@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: employees
+    ports:
+      - "5432:5432"
+    networks:
+      - pipeline_network
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+
+  spark-master:
+    image: bitnami/spark:3.4
+    container_name: spark-master
+    environment:
+      - SPARK_MODE=master
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    networks:
+      - pipeline_network
+    volumes:
+      - ./data:/opt/bitnami/spark/data
+      - ./spark:/opt/bitnami/spark/jobs
+      - ./scripts:/opt/bitnami/spark/scripts
+
+  spark-worker:
+    image: bitnami/spark:3.4
+    container_name: spark-worker
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_CORES=1
+    ports:
+      - "8081:8081"
+    depends_on:
+      - spark-master
+    networks:
+      - pipeline_network
+    volumes:
+      - ./data:/opt/bitnami/spark/data
+      - ./spark:/opt/bitnami/spark/jobs
+      - ./scripts:/opt/bitnami/spark/scripts
+
+  spark-submit:
+    image: bitnami/spark:3.4
+    container_name: spark-submit
+    # Wait for master, worker, and postgres to be ready, then submit the Spark job
+    entrypoint: >
+      /bin/sh -c "
+      sleep 15 &&
+      /opt/bitnami/spark/bin/spark-submit
+      --master spark://spark-master:7077
+      --packages org.postgresql:postgresql:42.6.0
+      /opt/bitnami/spark/jobs/etl_job.py
+      "
+    depends_on:
+      - spark-master
+      - spark-worker
+      - postgres
+    networks:
+      - pipeline_network
+    volumes:
+      - ./data:/opt/bitnami/spark/data
+      - ./spark:/opt/bitnami/spark/jobs
+      - ./scripts:/opt/bitnami/spark/scripts
+
+networks:
+  pipeline_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
