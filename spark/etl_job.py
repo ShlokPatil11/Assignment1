@@ -40,7 +40,7 @@ def run_etl():
     # Step 1 – Read Raw CSV
     # ─────────────────────────────────────────────
     try:
-        raw_path = "/opt/bitnami/spark/data/employees_raw.csv"
+        raw_path = "/opt/spark/data/employees_raw.csv"
         log.info(f"Reading raw CSV from: {raw_path}")
         df_raw = spark.read.csv(raw_path, header=True, inferSchema=False)
         log_count(df_raw, "Step 1 – Raw ingested")

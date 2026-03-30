@@ -15,13 +15,11 @@ services:
       - ./sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql
 
   spark-master:
-    image: apache/spark:3.4.1
+    image: apache/spark:latest
     container_name: spark-master
-    environment:
-      - SPARK_MODE=master
-    command: /opt/spark/sbin/start-master.sh
+    command: bash -c "/opt/spark/sbin/start-master.sh && tail -f /opt/spark/logs/*"
     ports:
-      - "9090:8080"   # Use 9090 on the host to avoid conflicts with other services
+      - "9090:8080"   # Spark Master Web UI (host 9090 to avoid conflicts)
       - "7077:7077"
     networks:
       - pipeline_network
@@ -30,9 +28,9 @@ services:
       - ./spark:/opt/spark/jobs
 
   spark-worker:
-    image: apache/spark:3.4.1
+    image: apache/spark:latest
     container_name: spark-worker
-    command: /opt/spark/sbin/start-worker.sh spark://spark-master:7077
+    command: bash -c "sleep 10 && /opt/spark/sbin/start-worker.sh spark://spark-master:7077 && tail -f /opt/spark/logs/*"
     environment:
       - SPARK_WORKER_MEMORY=1G
       - SPARK_WORKER_CORES=1
@@ -47,15 +45,20 @@ services:
       - ./spark:/opt/spark/jobs
 
   spark-submit:
-    image: apache/spark:3.4.1
+    image: apache/spark:latest
     container_name: spark-submit
+    environment:
+      - HOME=/tmp
+      - IVY_HOME=/tmp/.ivy2
     entrypoint: >
       /bin/bash -c "
       echo 'Waiting for Spark master and PostgreSQL...' &&
       sleep 20 &&
+      echo 'Downloading PostgreSQL JDBC driver...' &&
+      curl -o /tmp/postgresql.jar https://jdbc.postgresql.org/download/postgresql-42.6.0.jar &&
       /opt/spark/bin/spark-submit
       --master spark://spark-master:7077
-      --packages org.postgresql:postgresql:42.6.0
+      --jars /tmp/postgresql.jar
       /opt/spark/jobs/etl_job.py
       "
     depends_on:
